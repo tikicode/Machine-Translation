@@ -1,6 +1,8 @@
-There are three python programs here (`-h` for usage):
+There are four python programs here (`-h` for usage):
 
-- `./align` aligns words.
+- `./align` aligns words using DICE score.
+
+- `./model_one.py` aligns words using Expectation Maximization
 
 - `./check-alignments` checks that the entire dataset is aligned, and
   that there are no out-of-bounds alignment points.
@@ -10,6 +12,8 @@ There are three python programs here (`-h` for usage):
 The commands work in a pipeline. For instance:
 
    > ./align -t 0.9 -n 1000 | ./check | ./grade -n 5
+
+   > ./model_one -n 1000 | ./check | ./grade -n 5
 
 The `data` directory contains a fragment of the Canadian Hansards,
 aligned by Ulrich Germann:

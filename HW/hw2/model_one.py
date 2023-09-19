@@ -18,16 +18,19 @@ def iteration(previous_probs, bitext):
                 c = probs[f_i][e_j] / norm_z # Expected Count
                 fe_count[(f_i,e_j)] += c
                 count_e[e_j] += c
-        for fe in fe_count:
-            probs[fe[0]][fe[1]] = fe_count[fe] / count_e[fe[1]] # Normalize
+    for fe in fe_count:
+        probs[fe[0]][fe[1]] = fe_count[fe] / count_e[fe[1]] # Normalize
     return probs
 
 def train(probs, bitext):
-    converged = False
     prev_probs = probs
-    while not converged:
+    # converged = False
+    # while not converged: 
+    # Attemped to use convergence based on perplexity score
+    # but results were worse
+    for i in range(10):
         probs = iteration(prev_probs, bitext)
-        converged = check_converged(prev_probs, probs)
+        # converged = check_converged(prev_probs, probs)
         prev_probs = probs
     return probs
 
@@ -40,7 +43,7 @@ def check_converged(prev_probs, probs):
             for xs, ys in zip(x.values(), y.values()):
                 perp1 -= np.log2(xs)
                 perp2 -= np.log2(ys)
-    return abs(perp1 - perp2) < 5
+    return abs(perp1 - perp2) < 0.001
 
 
 # Read in command line arguments
@@ -63,7 +66,7 @@ for f_sent, e_sent in bitext:
     for f_i in set(f_sent):
         probs[f_i] = defaultdict(lambda : 1/len(bitext))
 
-# Run EM algorithm
+# Run EM algorithmx
 probs = train(probs, bitext)
 
 # Alignment

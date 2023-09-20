@@ -37,31 +37,34 @@ def train_model_two(bitext, iters):
     en_vocab = set(en_vocab)
     fr_vocab = set(fr_vocab)
 
-    q = defaultdict(float)
+    max_e = max([len(e_sent) for _, e_sent in bitext])
+    max_f = max([len(f_sent) for f_sent, _ in bitext])
+
+    q = np.zeros((max_f+1, max_e+1, max_f+1, max_e+1), dtype=float)
     for (f_sent, e_sent) in bitext:
         f_len = len(f_sent)
         e_len = len(e_sent)
         for i in range(f_len):
             for j in range(e_len):
-                q[(i,j,f_len,e_len)] = 1/(f_len + 1)
+                q[i,j,f_len,e_len] = 1/(f_len + 1)
  
     for i in range(iters):
         f_total = defaultdict(float)
         fe_count = defaultdict(float)
-        q_count = defaultdict(lambda: 0.0)
-        q_total = defaultdict(lambda: 0.0)
+        q_count = np.zeros((max_f+1, max_e+1, max_f+1, max_e+1), dtype=float)
+        q_total = np.zeros((max_e+1, max_f+1, max_e+1), dtype=float)
         for (f_sent, e_sent) in bitext:
             f_len = len(f_sent)
             e_len = len(e_sent)
             for (j, e_j) in enumerate(e_sent):
                 for (i, f_i) in enumerate(f_sent):
-                    e_total[e_j] += t_probs[(f_i,e_j)] * q[(i,j,f_len,e_len)] # Normalize
+                    e_total[e_j] += t_probs[(f_i,e_j)] * q[i,j,f_len,e_len] # Normalize
             
             for (j, e_j) in enumerate(e_sent):
                 for (i, f_i) in enumerate(f_sent):
-                    c = t_probs[(f_i,e_j)] * q[(i,j,f_len,e_len)] / e_total[e_j]
-                    q_count[(i,j,f_len,e_len)] += c
-                    q_total[(j,f_len,e_len)] += c
+                    c = t_probs[(f_i,e_j)] * q[i,j,f_len,e_len] / e_total[e_j]
+                    q_count[i,j,f_len,e_len] += c
+                    q_total[j,f_len,e_len] += c
                     fe_count[(f_i,e_j)] += c
                     f_total[f_i] += c
 
@@ -77,7 +80,7 @@ def train_model_two(bitext, iters):
             e_len = len(e_sent)
             for (j, e_j) in enumerate(e_sent):
                 for (i, f_i) in enumerate(f_sent):
-                    q[(i,j,f_len,e_len)] = q_count[(i,j,f_len,e_len)] / q_total[(j,f_len,e_len)]
+                    q[i,j,f_len,e_len] = q_count[i,j,f_len,e_len] / q_total[j,f_len,e_len]
 
     return t_probs, q
 
@@ -90,7 +93,7 @@ def train_model_three(bitext, iters):
         fe_count = defaultdict(float)
         q_count = defaultdict(lambda: 0.0)
         q_total = defaultdict(lambda: 0.0)
-
+    return t_probs
 
 if __name__ == "__main__":
     # Read in command line arguments
@@ -117,7 +120,7 @@ if __name__ == "__main__":
     elif opts.model == "three":
         probs, q = train_model_three(bitext, 5)
     else:
-        probs = train_model_one(bitext, 5)
+        probs = train_model_two(bitext, 5)
 
     # Alignment
     for (f, e) in bitext:

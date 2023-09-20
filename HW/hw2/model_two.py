@@ -3,95 +3,111 @@ import optparse
 import sys
 from collections import defaultdict
 import numpy as np
+import model_one
 
 def train_model_two(bitext):
-    max_f = max([len(f_sent) for f_sent, e_sent in bitext])
-    max_e = max([len(e_sent) for f_sent, e_sent in bitext])
-
     t_probs = defaultdict(lambda : 1/len(bitext))
+    e_total = defaultdict(lambda: 0.0)
+    t_probs = model_one.train_model_one(t_probs, bitext, 10)
 
-    q = {}
-    for i in range(max_f):
-        for j in range(max_e):
-            q[(i,j)] = defaultdict(lambda : 1/len(bitext))
+    en_vocab = []
+    fr_vocab = []
+    for (f_sent, e_sent) in bitext:
+        en_vocab.extend(e_sent)
+        fr_vocab.extend(f_sent)
 
-    for i in range(5):
-        e_align_any = defaultdict(float)
+    en_vocab = set(en_vocab)
+    fr_vocab = set(fr_vocab)
+
+    q = defaultdict(float)
+    for (f_sent, e_sent) in bitext:
+        f_len = len(f_sent)
+        e_len = len(e_sent)
+        for i in range(f_len):
+            for j in range(e_len):
+                q[(i,j,f_len,e_len)] = 1/f_len
+ 
+    for i in range(10):
+        f_total = defaultdict(float)
         fe_count = defaultdict(float)
-        q_count = {}
-        q_total = {}
+        q_count = defaultdict(lambda: 0.0)
+        q_total = defaultdict(lambda: 0.0)
         for (f_sent, e_sent) in bitext:
-            for i in range(max_f):
-                for j in range(max_e):
-                    q_count[(i,j)] = defaultdict(float)
-                    q_total[j] = defaultdict(float)
-
-
-        norm = defaultdict(float)
-        for (f_sent, e_sent) in bitext:
-            for (j, e_j) in enumerate(e_sent):
-                norm[j] = float(0)
-                for (i, f_i) in enumerate(f_sent):
-                    # print( f_i, e_j )
-                    # print(t_probs[f_i][e_j], f_i, e_j )
-                    # print(q[(i,j)][(len(f_sent) - 1, len(e_sent) - 1)])
-                    norm[j] += t_probs[(f_i,e_j)] * q[(i,j)][(len(f_sent) - 1, len(e_sent) - 1)]
-
-        for (f_sent, e_sent) in bitext:
+            f_len = len(f_sent)
+            e_len = len(e_sent)
             for (j, e_j) in enumerate(e_sent):
                 for (i, f_i) in enumerate(f_sent):
-                    c = t_probs[(f_i,e_j)] * q[(i,j)][(len(f_sent) - 1, len(e_sent) - 1)] / norm[j]
+                    e_total[e_j] += t_probs[(f_i,e_j)] * q[(i,j,f_len,e_len)] # Normalize
+            
+            for (j, e_j) in enumerate(e_sent):
+                for (i, f_i) in enumerate(f_sent):
+                    c = t_probs[(f_i,e_j)] * q[(i,j,f_len,e_len)] / e_total[e_j]
+                    q_count[(i,j,f_len,e_len)] += c
+                    q_total[(j,f_len,e_len)] += c
                     fe_count[(f_i,e_j)] += c
-                    e_align_any[f_i] += c
-                    q_count[(i,j)][(len(f_sent) - 1, len(e_sent) - 1)] += c
-                    q_total[j][(len(e_sent) - 1, len(f_sent) - 1)] += c
+                    f_total[f_i] += c
 
+        q = defaultdict(lambda: 0.0)
+        t_probs = defaultdict(lambda: 0.0)
 
-        t_probs = defaultdict(float)
-        
+        # Smoothing
         for (f_sent, e_sent) in bitext:
-            for (i, f_i) in enumerate(f_sent):
-                for (j, e_j) in enumerate(e_sent):
-                        t_probs[(f_i,e_j)] = fe_count[(f_i,e_j)] / e_align_any[f_i]
+            f_len = len(f_sent)
+            e_len = len(e_sent)
+            lamd = 1.0
+            for (j, e_j) in enumerate(e_sent):
+                for (i, f_i) in enumerate(f_sent):
+                    if q_count[(i,j,f_len,e_len)] > 0 and q_count[(i,j,f_len,e_len)] < lamd:
+                        lamd = q_count[(i,j,f_len,e_len)]
+            
+            lamd *= 0.25
+            for (j, e_j) in enumerate(e_sent):
+                for (i, f_i) in enumerate(f_sent):
+                    q_total[(i,j,f_len,e_len)] += lamd
 
-        q = {}
-        for i in range(max_f):
-            for j in range(max_e):
-                q[(i,j)] = defaultdict(float)
+            init = lamd * e_len
+            for (j, e_j) in enumerate(e_sent):
+                q_total[(j,f_len,e_len)] += init
 
-        for i in range(max_f):
-            for j in range(max_e):
-                for i_i in range(max_f):
-                    for j_j in range(max_e):
-                        if q_total[j][(j_j,i_i)] != 0:
-                            q[(i,j)][(i_i,j_j)] = q_count[(i,j)][(i_i,j_j)] / q_total[j][(j_j,i_i)]
+        for f in fr_vocab:
+            for e in en_vocab:
+                t_probs[(f,e)] = fe_count[(f,e)] / f_total[f]
+                    
+        for (f_sent, e_sent) in bitext:
+            f_len = len(f_sent)
+            e_len = len(e_sent)
+            for (j, e_j) in enumerate(e_sent):
+                for (i, f_i) in enumerate(f_sent):
+                    q[(i,j,f_len,e_len)] = q_count[(i,j,f_len,e_len)] / q_total[(j,f_len,e_len)]
 
     return t_probs, q
 
-# Read in command line arguments
-optparser = optparse.OptionParser()
-optparser.add_option("-d", "--data", dest="train", default="data/hansards", help="Data filename prefix (default=data)")
-optparser.add_option("-e", "--english", dest="english", default="e", help="Suffix of English filename (default=e)")
-optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
-optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int", help="Number of sentences to use for training and alignment")
-(opts, _) = optparser.parse_args()
-f_data = "%s.%s" % (opts.train, opts.french)
-e_data = "%s.%s" % (opts.train, opts.english)
 
-sys.stderr.write("Training with HMM...")
-bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
+if __name__ == "__main__":
+    # Read in command line arguments
+    optparser = optparse.OptionParser()
+    optparser.add_option("-d", "--data", dest="train", default="data/hansards", help="Data filename prefix (default=data)")
+    optparser.add_option("-e", "--english", dest="english", default="e", help="Suffix of English filename (default=e)")
+    optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
+    optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int", help="Number of sentences to use for training and alignment")
+    (opts, _) = optparser.parse_args()
+    f_data = "%s.%s" % (opts.train, opts.french)
+    e_data = "%s.%s" % (opts.train, opts.english)
 
-t_probs, q = train_model_two(bitext)
+    sys.stderr.write("Training with HMM...")
+    bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
 
-# Alignment
-for (f, e) in bitext:
-    for (i, f_i) in enumerate(f): 
-        best_prob = 0
-        best_j = 0
-        for (j, e_j) in enumerate(e):
-            if t_probs[(f_i,e_j)] > best_prob:
-                best_prob = t_probs[(f_i,e_j)]
+    t_probs, q = train_model_two(bitext)
 
-                best_j = j
-        sys.stdout.write("%i-%i " % (i,best_j))
-    sys.stdout.write("\n")
+    # Alignment
+    for (f, e) in bitext:
+        for (i, f_i) in enumerate(f): 
+            best_prob = 0
+            best_j = 0
+            for (j, e_j) in enumerate(e):
+                if t_probs[(f_i,e_j)] > best_prob:
+                    best_prob = t_probs[(f_i,e_j)]
+
+                    best_j = j
+            sys.stdout.write("%i-%i " % (i,best_j))
+        sys.stdout.write("\n")

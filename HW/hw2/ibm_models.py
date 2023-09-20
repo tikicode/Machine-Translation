@@ -25,9 +25,8 @@ def train_model_one(bitext, iters):
 
 
 def train_model_two(bitext, iters):
-    t_probs = defaultdict(lambda : 1/len(bitext))
     e_total = defaultdict(lambda: 0.0)
-    t_probs = model_one.train_model_one(t_probs, bitext, 5)
+    t_probs = train_model_one(bitext, 5)
 
     en_vocab = []
     fr_vocab = []
@@ -114,9 +113,9 @@ if __name__ == "__main__":
     if opts.model == "one":
         probs = train_model_one(bitext, 10)
     elif opts.model == "two":
-        probs = train_model_two(bitext, 5)
-    elif opts.model == "three"
-        probs = train_model_three(bitext, 5)
+        probs, q = train_model_two(bitext, 5)
+    elif opts.model == "three":
+        probs, q = train_model_three(bitext, 5)
     else:
         probs = train_model_one(bitext, 5)
 

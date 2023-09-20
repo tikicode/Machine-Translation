@@ -51,23 +51,23 @@ def train_model_two(bitext):
         t_probs = defaultdict(lambda: 0.0)
 
         # Smoothing
-        for (f_sent, e_sent) in bitext:
-            f_len = len(f_sent)
-            e_len = len(e_sent)
-            lamd = 1.0
-            for (j, e_j) in enumerate(e_sent):
-                for (i, f_i) in enumerate(f_sent):
-                    if q_count[(i,j,f_len,e_len)] > 0 and q_count[(i,j,f_len,e_len)] < lamd:
-                        lamd = q_count[(i,j,f_len,e_len)]
+        # for (f_sent, e_sent) in bitext:
+        #     f_len = len(f_sent)
+        #     e_len = len(e_sent)
+        #     lamd = 1.0
+        #     for (j, e_j) in enumerate(e_sent):
+        #         for (i, f_i) in enumerate(f_sent):
+        #             if q_count[(i,j,f_len,e_len)] > 0 and q_count[(i,j,f_len,e_len)] < lamd:
+        #                 lamd = q_count[(i,j,f_len,e_len)]
             
-            lamd *= 0.25
-            for (j, e_j) in enumerate(e_sent):
-                for (i, f_i) in enumerate(f_sent):
-                    q_total[(i,j,f_len,e_len)] += lamd
+        #     lamd *= 0.25
+        #     for (j, e_j) in enumerate(e_sent):
+        #         for (i, f_i) in enumerate(f_sent):
+        #             q_total[(i,j,f_len,e_len)] += lamd
 
-            init = lamd * e_len
-            for (j, e_j) in enumerate(e_sent):
-                q_total[(j,f_len,e_len)] += init
+        #     init = lamd * e_len
+        #     for (j, e_j) in enumerate(e_sent):
+        #         q_total[(j,f_len,e_len)] += init
 
         for f in fr_vocab:
             for e in en_vocab:

@@ -1,8 +1,17 @@
-#!usr/bin/env python
+#!/usr/bin/env python
 import optparse
 import sys
-from collections import defaultdict
+import string
+import nltk
 import numpy as np
+from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+from collections import defaultdict
+nltk.download("punkt")
+nltk.download("wordnet")
+
+e_stemmer = PorterStemmer()
+f_stemmer = nltk.stem.SnowballStemmer("french")
 
 def train_model_one(bitext, iters):
     probs = defaultdict(lambda : 1/len(bitext))
@@ -84,17 +93,6 @@ def train_model_two(bitext, iters):
 
     return t_probs, q
 
-def train_model_three(bitext, iters):
-    t_probs = defaultdict(lambda : 1/len(bitext))
-    t_probs, q = model_one.train_model_two(t_probs, bitext, 5)
-
-    for i in range (iters):
-        f_total = defaultdict(float)
-        fe_count = defaultdict(float)
-        q_count = defaultdict(lambda: 0.0)
-        q_total = defaultdict(lambda: 0.0)
-    return t_probs
-
 if __name__ == "__main__":
     # Read in command line arguments
     optparser = optparse.OptionParser()
@@ -103,13 +101,30 @@ if __name__ == "__main__":
     optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
     optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int", help="Number of sentences to use for training and alignment")
     optparser.add_option("-m", "--model", dest="model", default="two", help="IBM Model to run (default = two)")
+    optparser.add_option("-s", "--stemming", action="store_true", dest="stem", default=False)
 
     (opts, _) = optparser.parse_args()
     f_data = "%s.%s" % (opts.train, opts.french)
     e_data = "%s.%s" % (opts.train, opts.english)
 
     sys.stderr.write("Training with IBM Model 1...")
-    bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
+
+    bitext = []
+    if opts.stem:
+        with open(f_data) as f_file, open(e_data) as e_file:
+            for f_sentence, e_sentence in zip(f_file, e_file):
+                f_sentence = f_sentence.strip()
+                e_sentence = e_sentence.strip()
+                f_tokens =f_sentence.lower().split()
+                e_tokens= e_sentence.lower().split()
+                f_tokens = [f_stemmer.stem(token) for token in f_tokens]
+                e_tokens =  [e_stemmer.stem(token) for token in e_tokens]
+                bitext.append([f_tokens, e_tokens])
+    else:
+        bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))]
+
+    # Use bitext for training and alignment
+    bitext = bitext[:opts.num_sents]
 
     probs = defaultdict(float)
 
@@ -117,8 +132,6 @@ if __name__ == "__main__":
         probs = train_model_one(bitext, 10)
     elif opts.model == "two":
         probs, q = train_model_two(bitext, 5)
-    elif opts.model == "three":
-        probs, q = train_model_three(bitext, 5)
     else:
         probs = train_model_two(bitext, 5)
 

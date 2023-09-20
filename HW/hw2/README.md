@@ -13,12 +13,18 @@ The commands work in a pipeline. For instance:
 
    > ./align -t 0.9 -n 1000 | ./check | ./grade -n 5
 
-   > ./ibm_models -n 1000 -m one | ./check | ./grade -n 5
+   > ./ibm_models -n 1000 -m one -s | ./check | ./grade -n 5
+
+In order to run the ibm models, please download the requirements 
+using the command:
+
+  > pip install -r requirements.txt
 
 To run the a specific ibm model between one and three, please use
-the `-m` argument followed by `one`, `two`, or `three`. The rest 
+the `-m` argument followed by `one` or `two`. The rest 
 of the command line arguments are exactly the same as those in 
-`align`. 
+`align`. Additionally, to include stemming, please run with the '-s'
+option.
 
 The `data` directory contains a fragment of the Canadian Hansards,
 aligned by Ulrich Germann:

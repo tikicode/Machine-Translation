@@ -5,35 +5,78 @@ import sys
 import os
 import models
 from collections import namedtuple
+import math
+from itertools import permutations
+from tqdm import tqdm
 
-class BeamSearch:
-    def __init__(self, opts):
-        self.tm = models.TM(opts.tm, opts.k)
-        self.lm = models.LM(opts.lm)
-        self.f = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+class Decoder:
+  def __init__(self, opts):
+    self.tm = models.TM(opts.tm, opts.k)
+    self.lm = models.LM(opts.lm)
+    self.french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+    self.verbose = opts.verbose
+    self.input = opts.input
 
-
-    def decode(self):
-        for word in set(sum(self.f, ())):
-            if (word,) not in self.tm:
-                self.tm[(word,)] = [models.phrase(word, 0.0)]
-        sys.stderr.write(f"Decoding with Beam Search {opts.input}...\n")
-        for f in french:
-            hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
-            source_french = self.get_source_phrase()
+  def reorder(self, words):
+    num_words = len(words)
     
-    def get_french_phrases(self):
-        phrases = {}
-        for i in range(len(self.f)):
-            for j in range(i + 1, len(self.f)):
-                if self.f[i:j] in self.tm:
-                    if i in phrases:
-                        phrases[i].append(j)
-                    else:
-                        phrases[i] = [j]
-       return sorted 
+    # # Iterate through all possible starting positions for the group
+    for group_size in range(1, 5):
+      for start in range(num_words - group_size + 1):
+          mix = words[start:start + group_size]
+          beginning = words[:start]
+          end = words[start + group_size:]
+          
+          # Generate all permutations of the group
+          for perm in permutations(mix):
+              yield tuple(beginning + perm + end)
+        
+  def beam_search(self):
+    # tm should translate unknown words as-is with probability 1 (log of which is 0)
+    for word in set(sum(self.french, ())):
+      if (word,) not in self.tm:
+        self.tm[(word,)] = [models.phrase(word, 0.0)]
+    sys.stderr.write(f"Decoding with Beam Search {self.input}...\n")
 
+    hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase") # define hypothesis type
+    for f in self.french:
+      initial_hypothesis = hypothesis(0.0, self.lm.begin(), None, None) # initial is BOS token
+      winner = hypothesis(0, self.lm.begin(), None, None)
+      sent_perms = self.reorder(f)
+      # Mostly borrowed from decode
+      # Implement generalization by creating permuations of the target phrases
+      for r in sent_perms:
+        stacks = [{} for _ in f] + [{}] # enable indexing to len(f)
+        stacks[0][self.lm.begin()] = initial_hypothesis
+        for i, stack in enumerate(stacks[:-1]): # stacks for cur word
+          for h in sorted(stack.values(),key=lambda h: -h.logprob)[:opts.s]: # prune comparable hypotheses
+            for j in range(i+1,len(f)+1): # word indices for next word to the end (stack for each index)
+              cur_best = None
+              if f[i:j] in self.tm: # check if phrase from cur to next selected word exists
+                for phrase in self.tm[f[i:j]]: # find all translations for the phrase in the tm
+                  logprob = h.logprob + phrase.logprob 
+                  lm_state = h.lm_state
+                  for word in phrase.english.split(): # add lm score of the words in the phrase to the tm score for the phrase
+                    (lm_state, word_logprob) = self.lm.score(lm_state, word)
+                    logprob += word_logprob
+                  logprob += self.lm.end(lm_state) if j == len(f) else 0.0 # Add EOS token if at EOS
+                  new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+                  if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+                    stacks[j][lm_state] = new_hypothesis # add hypothesis for translation of the sent till point j
+        cur_winner = max(stacks[-1].values(), key=lambda h: h.logprob) # winner of the current reordering
+        if cur_winner.logprob < winner.logprob:
+          winner = cur_winner
+      def extract_english(h): 
+        return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+      print(extract_english(winner))
 
+      if self.verbose:
+        def extract_tm_logprob(h):
+          return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+        tm_logprob = extract_tm_logprob(winner)
+        sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
+          (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+    
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
@@ -41,23 +84,14 @@ optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", 
 optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxsize, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
-optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
+optparser.add_option("-s", "--stack-size", dest="s", default=10, type="int", help="Maximum stack size (default=1)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
 opts = optparser.parse_args()[0]
 
 
 # tm should translate unknown words as-is with probability 1
-for word in set(sum(french,())):
-  if (word,) not in tm:
-    tm[(word,)] = [models.phrase(word, 0.0)]
-
-sys.stderr.write("Decoding %s...\n" % (opts.input,))
-
-
-def extract_english(h): 
-  return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
-
-
+decoder = Decoder(opts)
+decoder.beam_search()
 
 
 

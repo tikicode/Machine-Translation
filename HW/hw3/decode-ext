@@ -8,6 +8,7 @@ from collections import namedtuple
 import math
 from itertools import permutations
 from tqdm import tqdm
+import networkx as nx # A* library
 
 class Decoder:
   def __init__(self, opts):
@@ -77,6 +78,76 @@ class Decoder:
         sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
           (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
     
+  def create_translation_graph(self, french_sentence):
+      G = nx.Graph()
+      num_words = len(french_sentence)
+      
+      # Add nodes for all possible word positions in the sentence
+      for i in range(num_words + 1):
+          G.add_node(i)
+      
+      # Add edges between adjacent nodes with appropriate weights
+      for i in range(num_words):
+          for j in range(i + 1, min(num_words + 1, i + 5)):  # Up to 4 words can be grouped
+              phrase = french_sentence[i:j]
+              if phrase in self.tm:
+                  for translation in self.tm[phrase]:
+                      lm_score = 0.0
+                      lm_state = self.lm.begin()
+                      for word in translation.english.split():
+                          lm_state, word_logprob = self.lm.score(lm_state, word)
+                          lm_score += word_logprob
+                      edge_weight = -translation.logprob - lm_score
+                      G.add_edge(i, j, weight=edge_weight, phrase=translation)
+      return G
+
+  def language_model_heuristic(self, source_sentence, target_sentence):
+        # Calculate the LM score for the unprocessed part of the source sentence
+        remaining_words = source_sentence  # Assuming no words have been translated yet
+        lm_score = 0.0
+
+        # Calculate the LM score for each word and accumulate it
+        for word in remaining_words:
+            _, word_logprob = self.lm.score(self.lm.begin(), word)  # Use your LM scoring function
+            lm_score += word_logprob
+
+        # Calculate the remaining LM score for the target sentence
+        target_lm_score = 0.0
+        for word in target_sentence:
+            _, word_logprob = self.lm.score(None, word)  # Use your LM scoring function
+            target_lm_score += word_logprob
+
+        # Return the negation of the LM score difference as the heuristic
+        return -(lm_score - target_lm_score)
+
+  def decode_sentence(self, french_sentence):
+    G = self.create_translation_graph(french_sentence)
+    start_node = 0
+    end_node = len(french_sentence)
+    
+    # Define a heuristic function for A* search (you can customize this)
+    def heuristic(node, goal_node):
+      remaining_words = french_sentence[node:end_node]
+      return self.language_model_heuristic(remaining_words, french_sentence[end_node:])
+
+    
+    try:
+        translation_path = nx.astar_path(G, start_node, end_node, heuristic=heuristic, weight='weight')
+        best_translation = []
+        for i in range(len(translation_path) - 1):
+            start, end = translation_path[i], translation_path[i + 1]
+            best_translation.append(G[start][end]['phrase'].english)
+        return " ".join(best_translation)
+
+    except nx.NetworkXNoPath:
+        return ""  # Handle the case when no path exists
+
+  def a_star(self):
+      sys.stderr.write(f"Decoding with A* Search {self.input}...\n")
+      for french_sentence in self.french:
+          best_translation = self.decode_sentence(french_sentence)
+          print(best_translation)
+    
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
@@ -91,7 +162,7 @@ opts = optparser.parse_args()[0]
 
 # tm should translate unknown words as-is with probability 1
 decoder = Decoder(opts)
-decoder.beam_search()
+decoder.a_star()
 
 
 

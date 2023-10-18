@@ -1,0 +1,240 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{geometry}[margin=0.5in]
+
+\renewcommand{\thesubsection
+}{\thesection.\alph{subsection}}
+
+\title{Machine Translation HW1}
+\author{Arijit Nukala}
+\date{September 8, 2023}
+
+
+\begin{document}
+
+\maketitle
+
+\section{Web Pages Translated}
+For this assignment, I used Sir Authur Conan Doyle's "The Hound of the Baskervilles" available
+on \href{bilinguis.com}{bilinguis.com}. The website allows for a side by side view of the book
+in translated languages and English. For this assignment, I will be comparing the Italian
+translation of the book, using the English translation as the "Human Correction of the Machine
+Translation" and Google Translate as my Machine Translator.
+The analysis of the article will be formatted as:
+\begin{enumerate}[label=(\alph*)]
+    \item Spanish Sentence
+    \item Machine Translation
+    \item Human Correction of the Machine Translation
+    \item Assessment of Error
+\end{enumerate}
+
+\section{Analysis}
+\begin{enumerate}
+    \item Sentence 1
+    \begin{enumerate}[label=(\alph*)]
+        \item Scommetto che lei ha gli occhi anche sulla nuca! 
+        \item I bet she has eyes on the back of her head too!
+        \item I believe you have eyes in the back of your head. 
+        \item In this translated sentence, Watson is speaking to Sherlock, a male, and the 
+        machine translation incorrectly identifies the speaker as a female. Additionally, 
+        the translation speaks of Holmes in the third person instead of referring to him as "you".
+    \end{enumerate}
+    \item Sentence 2
+    \begin{enumerate}[label=(\alph*)]
+        \item Vediamo se lei riesce a ricostruirmi l'uomo dall'esame del suo bastone.
+        \item Let's see if you can reconstruct the man for me by examining her cane.
+        \item Let me hear you reconstruct the man by an examination of it.
+        \item Here, "her cane" in the translation is incorrect because the cane belongs to
+        a man. There are some other minor errors such as the difference in tense between "examining"
+        and "examination". However, the sentence still reads similarly with these other errors.
+    \end{enumerate}
+    \item Sentence 3
+    \begin{enumerate}[label=(\alph*)]
+        \item    - Io penso - dissi, seguendo per quanto mi era possibile i metodi del mio amico - che il dottor Mortimer deve essere un medico in età, con una buona clientela, e molto stimato, dal momento che coloro che lo conoscono gli hanno offerto questo pegno della loro ammirazione.
+        \item “I think,” said I, following as far as I could the methods of my friend, “that Dr. Mortimer must be an old doctor, with a good clientele, and highly esteemed, since those who know him have offered him this token. of their admiration.
+        \item "I think," said I, following as far as I could the methods of my companion, "that Dr. Mortimer is a successful, elderly medical man, well-esteemed since those who know him give him this mark of their appreciation."
+        \item The machine translation includes a misplaced period after token. Google translate also uses 
+        "old doctor, with a good clientele" in place of "a successful, elderly medical man", which has 
+        a different tone and omits the direct explanation of the doctor's status as successful.
+    \end{enumerate}   
+    \item Sentence 4
+    \begin{enumerate}[label=(\alph*)]
+        \item Holmes non mi aveva mai lodato tanto in vita sua e devo ammettere che le sue parole in quel momento mi procurarono una viva soddisfazione, poiché spesso ero rimasto ferito dalla sua indifferenza verso l'ammirazione che io avevo sempre manifestata nei suoi confronti e verso i miei tentativi di dare pubblicità ai suoi metodi.
+        \item Holmes had never praised me so much in his life and I must admit that his words at that moment gave me great satisfaction, since I had often been hurt by his indifference towards the admiration that I had always shown towards him and my friends. attempts to publicize his methods.
+        \item He had never said as much before, and I must admit that his words gave me keen pleasure, for I had often been piqued by his indifference to my admiration and to the attempts which I had made to give publicity to his methods.
+        \item The translation makes an error after "my friends" by including an unnecessary period. "Piqued" does not 
+            exactly match "hurt" in the machine translation in terms of tone. 
+    \end{enumerate}    
+    \item Sentence 5
+    \begin{enumerate}[label=(\alph*)]
+        \item  - Temo, mio caro Watson, che la maggior parte delle sue conclusioni siano sbagliate.
+        \item -I fear, my dear Watson, that most of his conclusions are wrong.
+        \item  "I am afraid, my dear Watson, that most of your conclusions were erroneous.
+        \item The translation includes the dash in the Italian grammar and incorrectly uses "his conclusions"
+            instead of "your conlcusions". "Your conclusions" is correct because in this sentence, Holmes is 
+            speaking directly to Watson, which the machine translator does not understand.
+    \end{enumerate}   
+    \item Sentence 6
+    \begin{enumerate}[label=(\alph*)]
+        \item     - Ma poi basta.
+        \item  - But then that's enough.
+        \item  "But that was all."
+        \item The translation does not convey the meaning of "but that was all." The translation
+        gives a feeling of completion, since "that's enough" implies there should be no more. However,
+        The actual meaning of "that was all" is that there was more that could be said.
+    \end{enumerate}   
+    \item Sentence 7
+    \begin{enumerate}[label=(\alph*)]
+        \item   Scoppiai in una risata incredula, mentre Sherlock Holmes si sprofondava nel suo divanetto lanciando verso il soffitto anelli di fumo indefiniti.
+        \item I burst out laughing in disbelief, while Sherlock Holmes sank into his sofa, throwing vague rings of smoke towards the ceiling. 
+        \item I laughed incredulously as Sherlock Holmes leaned back in his settee and blew little wavering rings of smoke up to the ceiling.
+        \item The translation mixes "vague" and "wavering" in this example. "Wavering" clouds of smoke slowly fade away while 
+            "vague" clouds make one unsure what the clouds are.
+    \end{enumerate}   
+    \item Sentence 8
+    \begin{enumerate}[label=(\alph*)]
+        \item   - Per quel che riguarda l'ultima parte non ho dati sufficienti per controllare le sue asserzioni - dissi - ma comunque non è difficile stabilire alcuni particolari inerenti all'età del nostro uomo e alla sua carriera professionale.
+        \item -As regards the last part, I don't have enough data to verify his assertions - I said - but in any case it is not difficult to establish some details relating to our man's age and his professional career.
+        \item  "As to the latter part, I have no means of checking you," said I, "but at least it is not difficult to find out a few particulars about the man's age and professional career."
+        \item In the translated sentence, Watson says "I don't have enough data to verify HIS assertions" to Holmes, while 
+            speaking directly to Holmes. The translation is incorrect and Watson should be using "you". 
+    \end{enumerate}   
+    \item Sentence 9
+    \begin{enumerate}[label=(\alph*)]
+        \item Autore di Capricci dell'atavismo (Lancet, 1882), Siamo in progresso? (Journal of Psychology, marzo 1883). 
+        \item Author of Caprices of Atavism (Lancet, 1882), Are we in progress? (Journal of Psychology, March 1883).
+        \item Author of 'Some Freaks of Atavism' (Lancet 1882). 'Do We Progress?' (Journal of Psychology, March, 1883). 
+        \item Here, "Caprices" (unpredictable changes in mood) and "Freaks" do not have the same meaning though are similar.
+            Additionally, "are we in progress?" and "do we progress" have different verb tenses. 
+    \end{enumerate}   
+    \item Sentence 10
+    \begin{enumerate}[label=(\alph*)]
+        \item So per esperienza che a questo mondo soltanto un uomo simpatico riceve attestati di amicizia, soltanto un uomo privo di ambizioni abbandona una professione a Londra per ritirarsi in campagna, infine soltanto un uomo distratto lascia il proprio bastone anziché il proprio biglietto da visita dopo averti aspettato per un'ora nella tua stanza.
+        \item I know from experience that in this world only a nice man receives certificates of friendship, only a man without ambition abandons a profession in London to retire to the countryside, finally only a distracted man leaves his cane instead of his business card after waiting for you for an hour in your room.
+        \item It is my experience that it is only an amiable man in this world who receives testimonials, only an unambitious one who abandons a London career for the country, and only an absent-minded one who leaves his stick and not his visiting-card after waiting an hour in your room."
+        \item The last part of the list in the translated sentence, "finally only a...", is not the correct method of ending a comma 
+            separated list. Instead, "and" should be used. The machine translation is grammatically incorrect.
+    \end{enumerate}   
+    \item Sentence 11
+    \begin{enumerate}[label=(\alph*)]
+        \item    - E il cane?
+        \item - It's the dog?
+        \item "And the dog?"
+        \item "It's" and "And" give "the dog" two different meanings. The machine translation refers directly to the dog, questioning if "the dog is" something. 
+            The actual translation adds the dog in addition to a question previously asked.
+    \end{enumerate}   
+    \item Sentence 12
+    \begin{enumerate}[label=(\alph*)]
+        \item     - Esatto.
+        \item - Exact.
+        \item "Yes, sir."
+        \item "Exact" and "Yes, sir" have differently meaning. The machine translation could be "Exactly", which could be closer to 
+            correct because "Exactly" is similar to "yes". However, the tense of "Exact" does not match that of "Exactly" or "yes".
+    \end{enumerate}   
+    \item Sentence 13
+    \begin{enumerate}[label=(\alph*)]
+        \item   Il dottor Mortimer ammiccò da dietro le lenti con un'espressione di mite stupore.
+        \item Doctor Mortimer blinked from behind his glasses with an expression of mild amazement.
+        \item   Dr. Mortimer blinked through his glasses in mild astonishment.
+        \item The words "amazement" and "astonishment" are similar but do not convey the same meaning in speech. 
+            Amazement can be positive while astonishment is almost always in shock negatively.
+    \end{enumerate}   
+    \item Sentence 14
+    \begin{enumerate}[label=(\alph*)]
+        \item   - Lietissimo di conoscerla: ho inteso fare il suo nome unitamente a quello del suo amico.
+        \item -Delighted to meet you: I intended to mention his name together with that of his friend.
+        \item "Glad to meet you, sir. I have heard your name mentioned in connection with that of your friend.
+        \item "I intented to mention his name" makes it seem like the subject hoped to speak his name aloud whereas the correct
+            translation of "I have heard your name mentioned" means that the subject has heard his name and does not hope to speak it. 
+            The meanings of these sentences are different so the translation is flawed. 
+    \end{enumerate}   
+    \item Sentence 15
+    \begin{enumerate}[label=(\alph*)]
+        \item  Ora, poiché ammetto che lei in materia è il secondo esperto d'Europa...
+        \item Now, since I admit that you are the second expert in Europe on the subject...
+        \item Recognizing, as I do, that you are the second highest expert in Europe ------"
+        \item The translation "second expert" and "second highest expert" have two different meanings.
+            "Second highest expert" conveys that the person is the second best in the subject whereas
+            "second expert" is more vague.
+    \end{enumerate}   
+    \item Sentence 16
+    \begin{enumerate}[label=(\alph*)]
+        \item - Durante tutto il tempo in cui ella ha conversato con me, ha offerto ai miei occhi circa un paio di pollici del manoscritto;
+        \item -During the whole time that she conversed with me, she offered to my eyes about a couple of inches of the manuscript;
+        \item "You have presented an inch or two of it to my examination all the time that you have been talking.
+        \item While the translator is not blatantly wrong, the translated sentence reads awkwardly. The translation "She 
+            offered to my about about a couple of inches of the manuscript" does not sound correct because 
+            it sounds like "she" is offering the manuscript to the subject's eyes and not to the subject himself. Therefore,
+             the translation is an error.
+    \end{enumerate}   
+    \item Sentence 17
+    \begin{enumerate}[label=(\alph*)]
+        \item Abbiamo frequentemente registrato in queste colonne le sue generose donazioni ai locali enti di beneficenza e alla contea.
+        \item We have frequently recorded in these columns his generous donations to local charities and to the county.
+        \item His generous donations to local and county charities have been frequently chronicled in these columns.
+        \item The machine translated "Donations to local charities and to the county" makes it sound as if the donations were to both the 
+            local charities and to the county whereas the correct translation of "donations to local and county charities" specifies that the 
+            donations were made only to charities. The machine translation is incorrect in this case.
+    \end{enumerate}   
+    \item Sentence 18
+    \begin{enumerate}[label=(\alph*)]
+        \item    - E non l’ha detto a nessuno?
+        \item -And she didn't tell anyone?
+        \item "And you said nothing?"
+        \item Instead of referring to the subject as "you", the machine translation was not able to pick apart context and 
+            referred to the subject as "she". 
+    \end{enumerate}   
+    \item Sentence 19
+    \begin{enumerate}[label=(\alph*)]
+        \item     - Però non si era avvicinata al corpo?
+        \item -But she hadn't approached her body?
+        \item    "But it had not approached the body?"
+        \item Similarly, the machine translation is unable to understand context and refers to the beast as "she"
+            instead of "it".
+    \end{enumerate}   
+    \item Sentence 20
+    \begin{enumerate}[label=(\alph*)]
+        \item     - Com'era la notte?
+        \item - How was the night?
+        \item    "What sort of night was it?'
+        \item "How was the night" and "What sort of night was it" are two different questions in translation. 
+            The machine translation seems to be asking about the quality of the night whereas the actual translation 
+            asks about the type of night, referring to weather. While the wording is similar, subtle differences in 
+            meaning make the machine translation incorrect.
+    \end{enumerate}   
+\section{Summary}
+Based on all of the incorrect translations analyzes, a few common issues between 
+Italian to English machine translations became obvious when analyzing this specific text. 
+However, the ground truth Italian translation of the book did not exactly match the ground 
+truth English version due to idiomatic and structural differences. When parsing the corpus, 
+I attempted to choose sentences where the translation seemed closer to direct and tried to 
+ignore minor differences in wording or structure that did not affect the meaning of the sentence
+broadly. \\
+
+
+One of the major issues is "hallucination". There were situations in which periods appeared
+after seemingly random words in a sentence. This should not occur at all and I found it puzzling
+to find this issue. Another major issue is that possessive pronouns were often mismatched. For 
+instance, "he" and "she" were used when "you" should have been used. This could be because in Italian
+nouns are gendered. The machine translation should take this into account because otherwise, 
+especially in direct speech, the translation can make speakers sound as if they are talking 
+to subjects in the third person. Most other issues were more case specific and involved 
+word order and word translation. For example, the translation of "Exact" to "Yes, sir" does 
+not work because "Exact" should be in the adverb tense "Exactly" for the usage to make sense.
+Scenarios such as comma separated list termination, Italian quotation notation
+to English quotation notation conversion, and idiom translation are not captured by the machine 
+translation system. \\
+
+In this assignment, I have only chose examples in which machine translation fails.
+Machine translation systems do an incredibly good job of converting languages between
+each other an despite shortcomings, have increasingly become a viable way to 
+translate languages accurately. However, as the assignment displays, humans can still
+decipher real translations from machine translations and therefore, the systems still
+can benefit from progress.
+
+\end{enumerate}
+
+\end{document}

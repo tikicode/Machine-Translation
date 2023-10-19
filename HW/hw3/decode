@@ -51,7 +51,7 @@ for f in french:
   winner = max(stacks[-1].values(), key=lambda h: h.logprob)
   def extract_english(h): 
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
-  print(extract_english(winner)
+  print(extract_english(winner))
 
   if opts.verbose:
     def extract_tm_logprob(h):

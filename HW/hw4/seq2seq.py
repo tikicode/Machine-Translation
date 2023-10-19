@@ -29,6 +29,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from nltk.translate.bleu_score import corpus_bleu
 from torch import optim
+import math
+import numpy as np 
 
 
 logging.basicConfig(level=logging.DEBUG,
@@ -37,8 +39,8 @@ logging.basicConfig(level=logging.DEBUG,
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -134,6 +136,40 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
+class LSTMBlock(nn.Module):
+    """A single LSTM block implementation."""
+
+    def __init__(self, input_dim, hidden_dim, use_bias=True):
+        super(LSTMBlock, self).__init__()
+
+        self.input_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.input_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.forget_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.forget_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.output_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.output_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.cell_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.cell_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+
+    def forward(self, input, hidden):
+        
+        h_prev, c_prev = hidden
+
+        input_gate = self.sigmoid(self.input_wx(input) + self.input_wh(h_prev))
+        forget_gate = self.sigmoid(self.forget_wx(input) + self.forget_wh(h_prev))
+        output_gate = self.sigmoid(self.output_wx(input) + self.output_wh(h_prev))
+        
+        cell_gate = self.tanh(self.cell_wx(input) + self.cell_wh(h_prev))
+        c_curr = forget_gate * c_prev + input_gate * cell_gate
+        h_curr = output_gate * self.tanh(c_curr)
+
+        return h_curr, c_curr
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
@@ -148,8 +184,9 @@ class EncoderRNN(nn.Module):
         You should make your LSTM modular and re-use it in the Decoder.
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
+        self.embedding = nn.Embedding(input_size, hidden_size)
+        self.forward_lstm = LSTMBlock(hidden_size, hidden_size)
+        self.backward_lstm = LSTMBlock(hidden_size, hidden_size)
 
 
     def forward(self, input, hidden):
@@ -157,12 +194,32 @@ class EncoderRNN(nn.Module):
         returns the output and the hidden state
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
+        embedded = self.embedding(input)
+
+        forward_states = hidden
+        backward_states = hidden
+
+        all_forward_hiddens = []
+        all_backward_hiddens = []
+
+        for x in embedded:
+            forward_h, forward_c = self.forward_lstm(x, forward_states)
+            all_forward_hiddens.append(forward_h)
+            forward_states = (forward_h, forward_c)
+
+        for x in reversed(embedded):
+            backward_h, backward_c = self.backward_lstm(x, backward_states)
+            all_backward_hiddens.append(backward_h)
+            backward_states = (backward_h, backward_c)
+
+        all_backward_hiddens = list(reversed(all_backward_hiddens))
+
+        encoder_hiddens = torch.cat([torch.cat([f, b], dim=-1) for f, b in zip(all_forward_hiddens, all_backward_hiddens)], dim=1)
+        
+        return encoder_hiddens
 
     def get_initial_hidden_state(self):
         return torch.zeros(1, 1, self.hidden_size, device=device)
-
 
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
@@ -174,14 +231,20 @@ class AttnDecoderRNN(nn.Module):
         self.dropout_p = dropout_p
         self.max_length = max_length
 
+        self.emb = nn.Embedding(output_size, hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
+
+        self.lstm = LSTMBlock(hidden_size, hidden_size)
+        
+        self.first = nn.Linear(hidden_size, hidden_size)
+        self.second = nn.Linear(2*hidden_size, hidden_size)
+        self.third = nn.Linear(2*hidden_size, hidden_size)
         
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-
         self.out = nn.Linear(self.hidden_size, self.output_size)
+
 
     def forward(self, input, hidden, encoder_outputs):
         """runs the forward pass of the decoder
@@ -191,8 +254,32 @@ class AttnDecoderRNN(nn.Module):
         """
         
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return log_softmax, hidden, attn_weights
+        embedding = self.emb(input)
+        embedding = self.dropout(embedding)
+        
+        if len(encoder_outputs.shape) == 2:
+            encoder_outputs = torch.unsqueeze(encoder_outputs, 0)
+
+        h_state = hidden 
+
+        w_o = self.first(h_state) 
+        v_o = self.second(encoder_outputs)
+        u_o = self.third(encoder_outputs) 
+    
+        
+        attn_weights = torch.div(torch.matmul(w_o, torch.transpose(v_o, 1, 2)), self.hidden_size)
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+
+        context = torch.matmul(attn_weights, u_o)
+        
+        hidden = (h_state, context)
+        h_state, context = self.lstm(embedding, (h_state, context))
+        hidden = (h_state, context)
+
+        output = self.out(h_state)
+        output = torch.tanh(output)
+        log_softmax = torch.log(torch.softmax(output, dim=-1))
+        return log_softmax, h_state, attn_weights
 
     def get_initial_hidden_state(self):
         return torch.zeros(1, 1, self.hidden_size, device=device)
@@ -201,18 +288,40 @@ class AttnDecoderRNN(nn.Module):
 ######################################################################
 
 def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
-    encoder_hidden = encoder.get_initial_hidden_state()
+    init_encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_hidden = (init_encoder_hidden, init_encoder_hidden)
 
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
 
     "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+    optimizer.zero_grad()
+    
+    encoder_outputs = encoder(input_tensor, encoder_hidden)
 
-    return loss.item() 
+    encoder_output_dim = encoder_outputs.shape[2]
+    half_dim = encoder_output_dim // 2
+    decoder_hidden_initial = encoder_outputs[:, 0, half_dim:]
+    decoder_hidden = torch.unsqueeze(decoder_hidden_initial, 1)
 
+    decoder_input = torch.tensor([[0]], device=device)
+    total_loss = 0
 
+    for idx in range(target_tensor.shape[0]):
+        logits, new_decoder_hidden, _ = decoder(decoder_input, decoder_hidden, encoder_outputs)
+        decoder_hidden = new_decoder_hidden
+        squeezed_logits = logits.squeeze(0)
+
+        current_loss = criterion(squeezed_logits, target_tensor[idx])
+        total_loss += current_loss
+
+        decoder_input = target_tensor[idx]
+    
+    total_loss.backward()
+    optimizer.step()
+    
+    return total_loss.item() 
 
 ######################################################################
 
@@ -228,18 +337,23 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     with torch.no_grad():
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.get_initial_hidden_state()
+        encoder_hidden = (encoder.get_initial_hidden_state(), encoder.get_initial_hidden_state())
 
-        encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
+        encoder_outputs = torch.zeros(max_length, encoder.hidden_size*2, device=device)
+
+        raw_encoder_output = encoder(input_tensor, encoder_hidden)
+        encoder_output_simplified = torch.squeeze(raw_encoder_output)
 
         for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei],
-                                                     encoder_hidden)
-            encoder_outputs[ei] += encoder_output[0, 0]
-
+            current_encoder_output = encoder_output_simplified[ei, :]
+            encoder_outputs[ei] = current_encoder_output
+        
         decoder_input = torch.tensor([[SOS_index]], device=device)
 
-        decoder_hidden = encoder_hidden
+        encoder_output_dim = encoder_output_simplified.shape[1]
+        half_dim = encoder_output_dim // 2
+        decoder_hidden_initial = encoder_output_simplified[0, half_dim:]
+        decoder_hidden = torch.unsqueeze(decoder_hidden_initial, 0)
 
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)

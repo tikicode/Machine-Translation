@@ -21,7 +21,7 @@ import matplotlib
 #if you are running on the gradx/ugradx/ another cluster, 
 #you will need the following line
 #if you run on a local machine, you can comment it out
-matplotlib.use('agg') 
+#matplotlib.use('agg') 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import torch
@@ -412,7 +412,23 @@ def show_attention(input_sentence, output_words, attentions):
     """
     
     "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+    fig = plt.figure()
+
+    input_sentence_split = input_sentence.split() + ['<EOS>']
+    output_words_split = output_words
+
+    attentions_np = attentions.numpy()[:,:len(input_sentence_split)]
+    ax = fig.add_subplot(1, 1, 1)
+    im = ax.matshow(attentions_np, cmap='gray')
+
+    ax.set_xticks(range(len(input_sentence_split)))
+    ax.set_yticks(range(len(output_words_split)))
+
+    ax.set_xticklabels(input_sentence_split, rotation=90)
+    ax.set_yticklabels(output_words_split)
+    
+    plt.tight_layout()
+    plt.savefig('plots/'+input_sentence+'.png')
 
 
 def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab):
@@ -532,7 +548,7 @@ def main():
         if iter_num % args.print_every == 0:
             print_loss_avg = print_loss_total / args.print_every
             print_loss_total = 0
-            logging.info('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',
+            logging.debug('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',
                          time.time() - start,
                          iter_num,
                          iter_num / args.n_iters * 100,
@@ -544,7 +560,7 @@ def main():
             references = [[clean(pair[1]).split(), ] for pair in dev_pairs[:len(translated_sentences)]]
             candidates = [clean(sent).split() for sent in translated_sentences]
             dev_bleu = corpus_bleu(references, candidates)
-            logging.info('Dev BLEU score: %.2f', dev_bleu)
+            logging.debug('Dev BLEU score: %.2f', dev_bleu)
 
     # translate test set and write to file
     translated_sentences = translate_sentences(encoder, decoder, test_pairs, src_vocab, tgt_vocab)

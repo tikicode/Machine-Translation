@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.DEBUG,
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("gpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -440,11 +440,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--hidden_size', default=256, type=int,
                     help='hidden size of encoder/decoder, also word vector size')
-    ap.add_argument('--n_iters', default=100000, type=int,
+    ap.add_argument('--n_iters', default=10000, type=int,
                     help='total number of examples to train on')
-    ap.add_argument('--print_every', default=5000, type=int,
+    ap.add_argument('--print_every', default=500, type=int,
                     help='print loss info every this many training examples')
-    ap.add_argument('--checkpoint_every', default=500, type=int,
+    ap.add_argument('--checkpoint_every', default=1000, type=int,
                     help='write out checkpoint every this many training examples')
     ap.add_argument('--initial_learning_rate', default=0.001, type=int,
                     help='initial learning rate')
@@ -532,7 +532,7 @@ def main():
             torch.save(state, filename)
             logging.debug('wrote checkpoint to %s', filename)
 
-        if iter_num % args.print_every == 0:
+        if iter_num == args.n_iters - 1:
             print_loss_avg = print_loss_total / args.print_every
             print_loss_total = 0
             logging.debug('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',
@@ -546,6 +546,8 @@ def main():
 
             references = [[clean(pair[1]).split(), ] for pair in dev_pairs[:len(translated_sentences)]]
             candidates = [clean(sent).split() for sent in translated_sentences]
+            print(references)
+            print(candidates)
             dev_bleu = corpus_bleu(references, candidates)
             logging.debug('Dev BLEU score: %.2f', dev_bleu)
 

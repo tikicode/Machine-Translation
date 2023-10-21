@@ -31,7 +31,7 @@ from nltk.translate.bleu_score import corpus_bleu
 from torch import optim, unsqueeze
 import math
 import numpy as np 
-
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -39,8 +39,7 @@ logging.basicConfig(level=logging.DEBUG,
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("gpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -500,7 +499,8 @@ def main():
 
     # set up optimization/loss
     params = list(encoder.parameters()) + list(decoder.parameters())  # .parameters() returns generator
-    optimizer = optim.Adam(params, lr=args.initial_learning_rate)
+    #optimizer = optim.Adam(params, lr=args.initial_learning_rate)
+    optimizer = optim.SGD(params, lr=args.initial_learning_rate, momentum=0.9)
     criterion = nn.NLLLoss()
 
     # optimizer may have state
@@ -511,10 +511,9 @@ def main():
     start = time.time()
     print_loss_total = 0  # Reset every args.print_every
 
-    while iter_num < args.n_iters:
-        iter_num += 1
+    for i in tqdm(range(args.n_iters)):
         training_pair = tensors_from_pair(src_vocab, tgt_vocab, random.choice(train_pairs))
-        input_tensor = training_pair[0]
+        input_tensor = training_pair[1]
         target_tensor = training_pair[1]
         loss = train(input_tensor, target_tensor, encoder,
                      decoder, optimizer, criterion)
@@ -530,7 +529,7 @@ def main():
                      }
             filename = 'state_%010d.pt' % iter_num
             torch.save(state, filename)
-            logging.debug('wrote checkpoint to %s', filename)
+            #logging.debug('wrote checkpoint to %s', filename)
 
         if iter_num == args.n_iters - 1:
             print_loss_avg = print_loss_total / args.print_every

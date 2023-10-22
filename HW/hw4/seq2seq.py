@@ -21,18 +21,19 @@ import matplotlib
 #if you are running on the gradx/ugradx/ another cluster, 
 #you will need the following line
 #if you run on a local machine, you can comment it out
-#matplotlib.use('agg') 
+matplotlib.use('agg') 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from nltk.translate.bleu_score import corpus_bleu
-from torch import optim, unsqueeze
+from torch import optim
 import math
 import numpy as np 
 from tqdm import tqdm
 
+logging.getLogger('matplotlib.font_manager').disabled = True
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s')
 
@@ -40,6 +41,7 @@ logging.basicConfig(level=logging.DEBUG,
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -135,15 +137,48 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
+# class LSTMBlock(nn.Module):
+#     """A single LSTM block implementation."""
+
+#     def __init__(self, input_dim, hidden_dim, use_bias=True):
+#         super(LSTMBlock, self).__init__()
+
+#         self.input_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+#         self.input_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+#         self.forget_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+#         self.forget_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+#         self.output_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+#         self.output_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+#         self.cell_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+#         self.cell_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+#         self.sigmoid = nn.Sigmoid()
+#         self.tanh = nn.Tanh()
+
+#     def forward(self, input, hidden):
+        
+#         h_prev, c_prev = hidden
+
+#         input_gate = self.sigmoid(self.input_wx(input) + self.input_wh(h_prev))
+#         forget_gate = self.sigmoid(self.forget_wx(input) + self.forget_wh(h_prev))
+#         output_gate = self.sigmoid(self.output_wx(input) + self.output_wh(h_prev))
+        
+#         cell_gate = self.tanh(self.cell_wx(input) + self.cell_wh(h_prev))
+#         c_curr = forget_gate * c_prev + input_gate * cell_gate
+#         h_curr = output_gate * self.tanh(c_curr)
+
+#         return h_curr, c_curr
 class LSTMBlock(nn.Module):
     """A single LSTM block implementation."""
 
 
-    def __init__(self, input_dim, hidden_dim, output_dim, use_bias=True):
+    def __init__(self, input_dim, hidden_dim, use_bias=True):
         super(LSTMBlock, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
 
         self.wx = nn.Linear(input_dim, hidden_dim * 4, bias=use_bias)
         self.wh = nn.Linear(input_dim, hidden_dim * 4, bias=use_bias)
@@ -152,8 +187,8 @@ class LSTMBlock(nn.Module):
     def forward(self, input, hidden):
         if type(hidden) is not tuple:
             h_prev, c_prev = (
-                torch.zeros(1, self.output_dim).to(input.device),
-                torch.zeros(1, self.output_dim).to(input.device),
+                torch.zeros(1, self.hidden_dim).to(device),
+                torch.zeros(1, self.hidden_dim).to(device),
             )
         else:
             h_prev, c_prev = hidden
@@ -170,28 +205,31 @@ class LSTMBlock(nn.Module):
         h_curr = output_gate * torch.tanh(c_curr)
 
         return h_curr, c_curr
-
+    
     def init_weights(self):
-        s = 1.0 / math.sqrt(self.hidden_dim)
-        for weight in self.parameters():
-            weight.data.uniform_(-s, s)
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+
 
 class EncoderRNN(nn.Module):
-    """the class for the encoder RNN
+    """the class for the enoder RNN
     """
     def __init__(self, input_size, hidden_size):
         super(EncoderRNN, self).__init__()
+        self.input_size = input_size
         self.hidden_size = hidden_size
         """Initilize a word embedding and bi-directional LSTM encoder
-        For this assignment, you should *NOT* use nn.LSTM. 
+        For this assignment, you should *NOT* use nn.LSTM. 7yy
         Instead, you should implement the equations yourself.
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
         """
         self.embedding = nn.Embedding(input_size, hidden_size)
-        self.forward_lstm = LSTMBlock(hidden_size, hidden_size, hidden_size)
-        self.backward_lstm = LSTMBlock(hidden_size, hidden_size, hidden_size)
-
+        self.forward_lstm = LSTMBlock(hidden_size, hidden_size, 3)
+        self.backward_lstm = LSTMBlock(hidden_size, hidden_size, 3)
 
     def forward(self, input, hidden):
         """runs the forward pass of the encoder
@@ -204,110 +242,108 @@ class EncoderRNN(nn.Module):
 
         all_forward_hiddens = []
         all_backward_hiddens = []
-        all_forward_c = []
-        all_backward_c =[]
 
         for x in embedded:
             forward_h, forward_c = self.forward_lstm(x, forward_states)
             all_forward_hiddens.append(forward_h)
-            all_forward_c.append(forward_c)
             forward_states = (forward_h, forward_c)
 
         for x in reversed(embedded):
             backward_h, backward_c = self.backward_lstm(x, backward_states)
             all_backward_hiddens.append(backward_h)
-            all_backward_c.append(backward_c)
             backward_states = (backward_h, backward_c)
 
         all_backward_hiddens = list(reversed(all_backward_hiddens))
-        all_backward_c = list(reversed(all_backward_c))
-        # encoder_hiddens = torch.cat([torch.cat([f, b], dim=-1) for f, b in zip(all_forward_hiddens, all_backward_hiddens)], dim=1)
-        encoder_h = torch.cat([torch.cat([f, b], dim=-1) for f, b in zip(all_forward_hiddens, all_backward_hiddens)], dim=1)
-        encoder_c = torch.cat([torch.cat([f, b], dim=-1) for f, b in zip(all_forward_c, all_backward_c)], dim=1)
+        encoder_hiddens = torch.cat([torch.cat([f, b], dim=-1) for f, b in zip(all_forward_hiddens, all_backward_hiddens)], dim=1)
         
-        return encoder_h, encoder_c
+        return encoder_hiddens
 
     def get_initial_hidden_state(self):
-        return torch.zeros(1, 1, self.hidden_size * 2, device=device)
+        return torch.zeros(1, 1, self.hidden_size, device=device)
+
 
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
     """
     def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=MAX_LENGTH):
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
-        """
+        """ 
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.dropout_p = dropout_p
         self.max_length = max_length
 
-        self.emb = nn.Embedding(self.output_size, self.hidden_size * 2)
+        self.emb = nn.Embedding(output_size, hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.attn = nn.Linear(4 * self.hidden_size, self.max_length)
-        self.attn_layers = nn.Linear(4 * self.hidden_size, 2 * self.hidden_size)
-        self.out = nn.Linear(self.hidden_size * 2, self.output_size)
-        self.lstm = LSTMBlock(self.hidden_size * 2, self.hidden_size * 2, self.hidden_size * 2)
+        self.lstm = LSTMBlock(hidden_size, hidden_size, 3)
+        self.out = nn.Linear(hidden_size, self.output_size)
+        
+        # To improve the bleu score, we decided to try multilayer attention
+        self.query = nn.Linear(hidden_size, hidden_size)
+        self.key = nn.Linear(2 * hidden_size, hidden_size)
+        self.value = nn.Linear(2 * hidden_size, hidden_size)
+        self.attn_out = nn.Linear(hidden_size, hidden_size)
 
 
     def forward(self, input, hidden, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
+        
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        embedding = self.emb(input).view(1, 1, -1)
+        
+        "*** YOUR CODE HERE ***"
+        embedding = self.emb(input)
         embedding = self.dropout(embedding)
-        attn_weight = None
-        context = None
-        if hidden[0].dim() == 2:
-            attn_weight = F.softmax(self.attn(torch.cat((embedding[0], hidden[0]), 1)), dim=1)
-            context = torch.matmul(attn_weight, encoder_outputs).unsqueeze(0)
-        else:
-            attn_weight = F.softmax(self.attn(torch.cat((embedding[0], hidden[0][0]), 1)), dim=1)
-            context = torch.matmul(attn_weight.unsqueeze(0), encoder_outputs.unsqueeze(0))
-        output = self.attn_layers(torch.cat((embedding[0], context[0]), 1)).unsqueeze(0)
-        output = F.relu(output)
-        h, c = self.lstm.forward(output, hidden[0])
-        log_softmax = F.log_softmax(self.out(h[0]), dim=1)
+        
+        if len(encoder_outputs.shape) == 2:
+            encoder_outputs = torch.unsqueeze(encoder_outputs, 0)
 
-        return log_softmax, h, attn_weight
+        query = self.query(hidden) 
+        key = self.key(encoder_outputs)
+        value = self.value(encoder_outputs) 
+        
+        attn_weights = torch.matmul(query, key.transpose(2, 1)) / self.hidden_size # scaled dot product
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+        context  = self.attn_out(torch.matmul(attn_weights, value))
+
+        hidden = (hidden, context)
+        hidden, output = self.lstm(embedding, hidden)
+        output = self.out(hidden)
+        log_softmax = torch.log(torch.softmax(output, dim=-1))
+        return log_softmax, hidden, attn_weights
 
     def get_initial_hidden_state(self):
-        return torch.zeros(1, 1, self.hidden_size * 2 , device=device)
-
+        return torch.zeros(1, 1, self.hidden_size, device=device)
 
 ######################################################################
 
 def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
-    encoder_hidden = encoder.get_initial_hidden_state()
+    init_encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_hidden = (init_encoder_hidden, init_encoder_hidden)
 
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
     optimizer.zero_grad()
-    encoder_outputs = torch.zeros(max_length, encoder.hidden_size*2, device=device)
+    
+    encoder_outputs = encoder(input_tensor, encoder_hidden)
 
-    for i in range(input_tensor.shape[0]):
-        encoder_hidden, encoder_output = encoder(input_tensor[i], encoder_hidden)
-        encoder_outputs[i] = encoder_output[0,0]
-
+    decoder_hidden = decoder.get_initial_hidden_state()
     decoder_input = torch.tensor([[SOS_index]], device=device)
     loss = 0
-    
-    decoder_hidden = encoder_hidden[0].resize(1,1,512)
+
     for idx in range(target_tensor.shape[0]):
         decoder_output, decoder_hidden, _ = decoder(decoder_input, decoder_hidden, encoder_outputs)
-        _, topi = decoder_output.data.topk(1)
-        decoder_input = topi.squeeze().detach()
-
-        loss += criterion(decoder_output.to(torch.float), target_tensor[idx])
-        if decoder_input.item() == EOS_token: # if sentence completed stop trainingxa
-            break
-
+        loss += criterion(decoder_output.squeeze(0), target_tensor[idx])
+        decoder_input = target_tensor[idx]
+    
     loss.backward()
     optimizer.step()
+    
+    return loss.item() 
 
-    return loss.item()
 
 ######################################################################
 
@@ -323,25 +359,23 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     with torch.no_grad():
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.get_initial_hidden_state()
+        encoder_hidden = (encoder.get_initial_hidden_state(), encoder.get_initial_hidden_state())
 
-        encoder_outputs = torch.zeros(max_length, encoder.hidden_size * 2, device=device)
+        encoder_outputs = torch.zeros(max_length, encoder.hidden_size*2, device=device)
 
-        # raw_encoder_output = encoder(input_tensor, encoder_hidden)
-        # encoder_output_simplified = torch.squeeze(raw_encoder_output)
+        raw_encoder_output = encoder(input_tensor, encoder_hidden)
+        encoder_output_simplified = torch.squeeze(raw_encoder_output)
 
         for ei in range(input_length):
-            encoder_hidden, encoder_output = encoder(input_tensor[ei], encoder_hidden)
-            encoder_outputs[ei] += encoder_output[0,0]
-            # current_encoder_output = encoder_output_simplified[ei, :]
-            # encoder_outputs[ei] = current_encoder_output
-
+            current_encoder_output = encoder_output_simplified[ei, :]
+            encoder_outputs[ei] = current_encoder_output
+        
         decoder_input = torch.tensor([[SOS_index]], device=device)
 
-        # encoder_output_dim = encoder_output_simplified.shape[1]
-        # half_dim = encoder_output_dim // 2
-        # decoder_hidden_initial = encoder_output_simplified[0, half_dim:]
-        decoder_hidden = encoder_hidden[0].resize(1,1,512)
+        encoder_output_dim = encoder_output_simplified.shape[1]
+        half_dim = encoder_output_dim // 2
+        decoder_hidden_initial = encoder_output_simplified[0, half_dim:]
+        decoder_hidden = torch.unsqueeze(decoder_hidden_initial, 0)
 
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
@@ -350,7 +384,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
             decoder_output, decoder_hidden, decoder_attention = decoder(
                 decoder_input, decoder_hidden, encoder_outputs)
             decoder_attentions[di] = decoder_attention.data
-            _, topi = decoder_output.data.topk(1)
+            topv, topi = decoder_output.data.topk(1)
             if topi.item() == EOS_index:
                 decoded_words.append(EOS_token)
                 break
@@ -439,25 +473,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--hidden_size', default=256, type=int,
                     help='hidden size of encoder/decoder, also word vector size')
-    ap.add_argument('--n_iters', default=10000, type=int,
+    ap.add_argument('--n_iters', default=100000, type=int,
                     help='total number of examples to train on')
-    ap.add_argument('--print_every', default=500, type=int,
+    ap.add_argument('--print_every', default=5000, type=int,
                     help='print loss info every this many training examples')
-    ap.add_argument('--checkpoint_every', default=1000, type=int,
+    ap.add_argument('--checkpoint_every', default=10000, type=int,
                     help='write out checkpoint every this many training examples')
-    ap.add_argument('--initial_learning_rate', default=0.001, type=int,
+    ap.add_argument('--initial_learning_rate', default=0.001, type=float,
                     help='initial learning rate')
     ap.add_argument('--src_lang', default='fr',
                     help='Source (input) language code, e.g. "fr"')
     ap.add_argument('--tgt_lang', default='en',
                     help='Source (input) language code, e.g. "en"')
-    ap.add_argument('--train_file', default='data/fren.train.bpe',
+    ap.add_argument('--train_file', default='../data/fren.train.bpe',
                     help='training file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence')
-    ap.add_argument('--dev_file', default='data/fren.dev.bpe',
+    ap.add_argument('--dev_file', default='../data/fren.dev.bpe',
                     help='dev file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence')
-    ap.add_argument('--test_file', default='data/fren.test.bpe',
+    ap.add_argument('--test_file', default='../data/fren.test.bpe',
                     help='test file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence' +
                          ' (for test, target is ignored)')
@@ -499,8 +533,7 @@ def main():
 
     # set up optimization/loss
     params = list(encoder.parameters()) + list(decoder.parameters())  # .parameters() returns generator
-    #optimizer = optim.Adam(params, lr=args.initial_learning_rate)
-    optimizer = optim.SGD(params, lr=args.initial_learning_rate, momentum=0.9)
+    optimizer = optim.Adam(params, lr=args.initial_learning_rate)
     criterion = nn.NLLLoss()
 
     # optimizer may have state
@@ -511,9 +544,9 @@ def main():
     start = time.time()
     print_loss_total = 0  # Reset every args.print_every
 
-    for i in tqdm(range(args.n_iters)):
+    for iter_num in tqdm(range(args.n_iters)):
         training_pair = tensors_from_pair(src_vocab, tgt_vocab, random.choice(train_pairs))
-        input_tensor = training_pair[1]
+        input_tensor = training_pair[0]
         target_tensor = training_pair[1]
         loss = train(input_tensor, target_tensor, encoder,
                      decoder, optimizer, criterion)
@@ -529,12 +562,12 @@ def main():
                      }
             filename = 'state_%010d.pt' % iter_num
             torch.save(state, filename)
-            #logging.debug('wrote checkpoint to %s', filename)
+            logging.debug('wrote checkpoint to %s', filename)
 
-        if iter_num == args.n_iters - 1:
+        if iter_num % args.print_every == 0:
             print_loss_avg = print_loss_total / args.print_every
             print_loss_total = 0
-            logging.debug('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',
+            logging.info('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',
                          time.time() - start,
                          iter_num,
                          iter_num / args.n_iters * 100,
@@ -545,10 +578,8 @@ def main():
 
             references = [[clean(pair[1]).split(), ] for pair in dev_pairs[:len(translated_sentences)]]
             candidates = [clean(sent).split() for sent in translated_sentences]
-            print(references)
-            print(candidates)
             dev_bleu = corpus_bleu(references, candidates)
-            logging.debug('Dev BLEU score: %.2f', dev_bleu)
+            logging.info('Dev BLEU score: %.2f', dev_bleu)
 
     # translate test set and write to file
     translated_sentences = translate_sentences(encoder, decoder, test_pairs, src_vocab, tgt_vocab)

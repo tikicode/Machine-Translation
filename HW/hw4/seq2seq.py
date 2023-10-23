@@ -137,75 +137,43 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
-# class LSTMBlock(nn.Module):
-#     """A single LSTM block implementation."""
-
-#     def __init__(self, input_dim, hidden_dim, use_bias=True):
-#         super(LSTMBlock, self).__init__()
-
-#         self.input_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-#         self.input_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-#         self.forget_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-#         self.forget_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-#         self.output_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-#         self.output_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-#         self.cell_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-#         self.cell_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-#         self.sigmoid = nn.Sigmoid()
-#         self.tanh = nn.Tanh()
-
-#     def forward(self, input, hidden):
-        
-#         h_prev, c_prev = hidden
-
-#         input_gate = self.sigmoid(self.input_wx(input) + self.input_wh(h_prev))
-#         forget_gate = self.sigmoid(self.forget_wx(input) + self.forget_wh(h_prev))
-#         output_gate = self.sigmoid(self.output_wx(input) + self.output_wh(h_prev))
-        
-#         cell_gate = self.tanh(self.cell_wx(input) + self.cell_wh(h_prev))
-#         c_curr = forget_gate * c_prev + input_gate * cell_gate
-#         h_curr = output_gate * self.tanh(c_curr)
-
-#         return h_curr, c_curr
 class LSTMBlock(nn.Module):
     """A single LSTM block implementation."""
 
-
     def __init__(self, input_dim, hidden_dim, use_bias=True):
         super(LSTMBlock, self).__init__()
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
 
-        self.wx = nn.Linear(input_dim, hidden_dim * 4, bias=use_bias)
-        self.wh = nn.Linear(input_dim, hidden_dim * 4, bias=use_bias)
+        self.input_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.input_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.forget_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.forget_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.output_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.output_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.cell_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
+        self.cell_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
+
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+        
         self.init_weights()
 
     def forward(self, input, hidden):
-        if type(hidden) is not tuple:
-            h_prev, c_prev = (
-                torch.zeros(1, self.hidden_dim).to(device),
-                torch.zeros(1, self.hidden_dim).to(device),
-            )
-        else:
-            h_prev, c_prev = hidden
+        
+        h_prev, c_prev = hidden
 
-        all_gates = self.wx(input) + self.wh(h_prev)
-        input_gate, forget_gate, cell_gate, output_gate = torch.chunk(all_gates, 4, 1) if all_gates[0].dim() == 1 else torch.split(all_gates, self.hidden_dim, 2)
-
-        input_gate = torch.sigmoid(input_gate)
-        forget_gate = torch.sigmoid(forget_gate)
-        output_gate = torch.sigmoid(output_gate)
-        cell_gate = torch.tanh(cell_gate)
-
+        input_gate = self.sigmoid(self.input_wx(input) + self.input_wh(h_prev))
+        forget_gate = self.sigmoid(self.forget_wx(input) + self.forget_wh(h_prev))
+        output_gate = self.sigmoid(self.output_wx(input) + self.output_wh(h_prev))
+        
+        cell_gate = self.tanh(self.cell_wx(input) + self.cell_wh(h_prev))
         c_curr = forget_gate * c_prev + input_gate * cell_gate
-        h_curr = output_gate * torch.tanh(c_curr)
+        h_curr = output_gate * self.tanh(c_curr)
 
         return h_curr, c_curr
-    
+
     def init_weights(self):
         for name, param in self.named_parameters():
             if 'weight' in name:
@@ -262,6 +230,30 @@ class EncoderRNN(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 
+class Attention(nn.Module):
+    """ Implementing multiplicative attention
+    """
+    def __init__(self, hidden_size):
+        super(Attention, self).__init__()
+        self.hidden_size = hidden_size
+
+        self.value = nn.Linear(2 * hidden_size, hidden_size)
+        self.key = nn.Linear(2 * hidden_size, hidden_size)
+        self.query = nn.Linear(hidden_size, hidden_size)
+        self.relu = nn.ReLU()
+
+    def forward(self, query, kv):
+        k = self.key(kv)
+        v = self.value(kv)
+        q = self.query(query)
+        
+        attn_weights = torch.matmul(q, torch.transpose(k, -1, -2))
+        attn_weights = torch.div(attn_weights, self.hidden_size)
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+        context = self.relu(torch.matmul(attn_weights, v))
+
+        return attn_weights, context
+
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
     """
@@ -278,12 +270,7 @@ class AttnDecoderRNN(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
         self.lstm = LSTMBlock(hidden_size, hidden_size, 3)
         self.out = nn.Linear(hidden_size, self.output_size)
-        
-        # To improve the bleu score, we decided to try multilayer attention
-        self.query = nn.Linear(hidden_size, hidden_size)
-        self.key = nn.Linear(2 * hidden_size, hidden_size)
-        self.value = nn.Linear(2 * hidden_size, hidden_size)
-        self.attn_out = nn.Linear(hidden_size, hidden_size)
+        self.attn = Attention(hidden_size)
 
 
     def forward(self, input, hidden, encoder_outputs):
@@ -292,22 +279,13 @@ class AttnDecoderRNN(nn.Module):
         
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        
-        "*** YOUR CODE HERE ***"
         embedding = self.emb(input)
         embedding = self.dropout(embedding)
         
-        if len(encoder_outputs.shape) == 2:
-            encoder_outputs = torch.unsqueeze(encoder_outputs, 0)
+        if len(embedding.shape) == 2:
+            embedding = torch.unsqueeze(embedding, 0)
 
-        query = self.query(hidden) 
-        key = self.key(encoder_outputs)
-        value = self.value(encoder_outputs) 
-        
-        attn_weights = torch.matmul(query, key.transpose(2, 1)) / self.hidden_size # scaled dot product
-        attn_weights = torch.softmax(attn_weights, dim=-1)
-        context  = self.attn_out(torch.matmul(attn_weights, value))
-
+        attn_weights, context = self.attn(hidden, encoder_outputs)
         hidden = (hidden, context)
         hidden, output = self.lstm(embedding, hidden)
         output = self.out(hidden)
@@ -342,7 +320,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     loss.backward()
     optimizer.step()
     
-    return loss.item() 
+    return loss.item() # total loss
 
 
 ######################################################################
@@ -475,7 +453,7 @@ def main():
                     help='hidden size of encoder/decoder, also word vector size')
     ap.add_argument('--n_iters', default=100000, type=int,
                     help='total number of examples to train on')
-    ap.add_argument('--print_every', default=5000, type=int,
+    ap.add_argument('--print_every', default=500, type=int,
                     help='print loss info every this many training examples')
     ap.add_argument('--checkpoint_every', default=10000, type=int,
                     help='write out checkpoint every this many training examples')
@@ -564,7 +542,7 @@ def main():
             torch.save(state, filename)
             logging.debug('wrote checkpoint to %s', filename)
 
-        if iter_num % args.print_every == 0:
+        if iter_num % args.print_every == 0 and iter_num != 0:
             print_loss_avg = print_loss_total / args.print_every
             print_loss_total = 0
             logging.info('time since start:%s (iter:%d iter/n_iters:%d%%) loss_avg:%.4f',

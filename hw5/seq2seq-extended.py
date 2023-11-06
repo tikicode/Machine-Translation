@@ -183,7 +183,7 @@ class Multihead_Attention(nn.Module):
     """
 
     def __init__(self, hidden_size, n_heads=16, dropout_p=0.1):
-        super(Attention, self).__init__()
+        super(Multihead_Attention, self).__init__()
         self.hidden_size = hidden_size
         self.n_heads = n_heads
         self.head_dim = hidden_size // n_heads

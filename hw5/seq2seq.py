@@ -468,7 +468,7 @@ def main():
                     help='hidden size of encoder/decoder, also word vector size')
     ap.add_argument('--n_iters', default=100000, type=int,
                     help='total number of examples to train on')
-    ap.add_argument('--print_every', default=100, type=int,
+    ap.add_argument('--print_every', default=10000, type=int,
                     help='print loss info every this many training examples')
     ap.add_argument('--checkpoint_every', default=10000, type=int,
                     help='write out checkpoint every this many training examples')
@@ -492,7 +492,7 @@ def main():
                     help='output file for test translations')
     ap.add_argument('--load_checkpoint', nargs=1,
                     help='checkpoint file to start from')
-    ap.add_argument('--batch_size', default=6, type=int,
+    ap.add_argument('--batch_size', default=16, type=int,
                     help='training batch size')
 
     args = ap.parse_args()

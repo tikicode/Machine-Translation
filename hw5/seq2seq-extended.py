@@ -178,8 +178,8 @@ class EncoderRNN(nn.Module):
         return torch.zeros(1, batch_size, self.hidden_size, device=device)
 
 
-class Attention(nn.Module):
-    """ Implementing multiplicative attention
+class Multihead_Attention(nn.Module):
+    """ Implementing multihead attention
     """
 
     def __init__(self, hidden_size, n_heads=16, dropout_p=0.1):
@@ -226,6 +226,48 @@ class Attention(nn.Module):
         return attn_weights.unsqueeze(dim=0), context
 
 
+class BahdanauAttention(nn.Module):
+    """ Implementing additive attention
+    """
+    def __init__(self, hidden_size):
+        super(BahdanauAttention, self).__init__()
+        self.hidden_size = hidden_size
+        self.W_query = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W_key = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.V = nn.Linear(hidden_size, 1, bias=False)
+
+    def forward(self, query, encoder_outputs):
+        query = self.W_query(query).unsqueeze(1) 
+        keys = self.W_key(encoder_outputs)
+        energy = torch.tanh(query + keys)
+        attn_scores = self.V(energy).squeeze(-1)
+        attn_weights = torch.softmax(attn_scores, dim=1)
+
+        context = torch.sum(encoder_outputs * attn_weights.unsqueeze(3), dim=1)
+        return attn_weights, context
+    
+
+class HardAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super(HardAttention, self).__init__()
+        self.hidden_size = hidden_size
+
+        self.value = nn.Linear(hidden_size, hidden_size)
+        self.key = nn.Linear(hidden_size, hidden_size)
+        self.query = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, query, kv):
+        k = self.key(kv)
+        v = self.value(kv)
+        q = self.query(query)
+        
+        attn_logits = torch.matmul(q, torch.transpose(k, -1, -2))
+        attn_weights = F.gumbel_softmax(attn_logits, tau=1, hard=True, dim=-1)
+        context = torch.matmul(attn_weights, v)
+        
+        return attn_weights, context
+
+
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
     """
@@ -243,7 +285,7 @@ class AttnDecoderRNN(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
         self.GRU = nn.GRU(2 * hidden_size, hidden_size)
         self.out = nn.Linear(hidden_size, output_size)
-        self.attn = Attention(hidden_size)
+        self.attn = Multihead_Attention(hidden_size)
 
     def forward(self, input, hidden, encoder_outputs):
         """runs the forward pass of the decoder
@@ -494,7 +536,7 @@ def main():
                     help='hidden size of encoder/decoder, also word vector size')
     ap.add_argument('--n_iters', default=100000, type=int,
                     help='total number of examples to train on')
-    ap.add_argument('--print_every', default=100, type=int,
+    ap.add_argument('--print_every', default=10000, type=int,
                     help='print loss info every this many training examples')
     ap.add_argument('--checkpoint_every', default=10000, type=int,
                     help='write out checkpoint every this many training examples')
@@ -518,7 +560,7 @@ def main():
                     help='output file for test translations')
     ap.add_argument('--load_checkpoint', nargs=1,
                     help='checkpoint file to start from')
-    ap.add_argument('--batch_size', default=4, type=int,
+    ap.add_argument('--batch_size', default=16, type=int,
                     help='training batch size')
     ap.add_argument('--beam_search', dest='beam_search', action='store_true', help='use beam search')
     ap.add_argument('--no-beam_search', dest='beam_search', action='store_false', help='no beam search')

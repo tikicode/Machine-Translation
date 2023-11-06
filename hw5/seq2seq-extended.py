@@ -11,6 +11,8 @@ Students *MAY NOT* view the above tutorial or use it as a reference in any way.
 
 from __future__ import unicode_literals, print_function, division
 import numpy as np
+import heapq
+from collections import namedtuple
 from tqdm import tqdm
 import math
 from torch import optim
@@ -144,53 +146,6 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
-class LSTMBlock(nn.Module):
-    """A single LSTM block implementation."""
-
-    def __init__(self, input_dim, hidden_dim, use_bias=True):
-        super(LSTMBlock, self).__init__()
-
-        self.input_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-        self.input_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-        self.forget_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-        self.forget_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-        self.output_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-        self.output_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-        self.cell_wx = nn.Linear(input_dim, hidden_dim, bias=use_bias)
-        self.cell_wh = nn.Linear(hidden_dim, hidden_dim, bias=use_bias)
-
-        self.sigmoid = nn.Sigmoid()
-        self.tanh = nn.Tanh()
-
-        self.init_weights()
-
-    def forward(self, input, hidden):
-
-        h_prev, c_prev = hidden
-
-        input_gate = self.sigmoid(self.input_wx(input) + self.input_wh(h_prev))
-        forget_gate = self.sigmoid(
-            self.forget_wx(input) + self.forget_wh(h_prev))
-        output_gate = self.sigmoid(
-            self.output_wx(input) + self.output_wh(h_prev))
-
-        cell_gate = self.tanh(self.cell_wx(input) + self.cell_wh(h_prev))
-        c_curr = forget_gate * c_prev + input_gate * cell_gate
-        h_curr = output_gate * self.tanh(c_curr)
-
-        return h_curr, c_curr
-
-    def init_weights(self):
-        for name, param in self.named_parameters():
-            if 'weight' in name:
-                nn.init.xavier_uniform_(param)
-            elif 'bias' in name:
-                nn.init.zeros_(param)
-
-
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
     """
@@ -227,26 +182,48 @@ class Attention(nn.Module):
     """ Implementing multiplicative attention
     """
 
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, n_heads=16, dropout_p=0.1):
         super(Attention, self).__init__()
         self.hidden_size = hidden_size
+        self.n_heads = n_heads
+        self.head_dim = hidden_size // n_heads
 
         self.value = nn.Linear(hidden_size, hidden_size)
         self.key = nn.Linear(hidden_size, hidden_size)
         self.query = nn.Linear(hidden_size, hidden_size)
+        self.dropout = nn.Dropout(dropout_p)
+
         self.relu = nn.ReLU()
 
     def forward(self, query, kv):
-        k = self.key(kv)
-        v = self.value(kv)
-        q = self.query(query)
+        if len(kv.shape) == 2:
+            kv = kv.unsqueeze(dim=1)
+        batch_size = kv.shape[1]
 
-        attn_weights = torch.matmul(q, torch.transpose(k, -1, -2))
-        attn_weights = torch.div(attn_weights, self.hidden_size)
+        k = self.key(kv).permute(1, 0, 2)
+        v = self.value(kv).permute(1, 0, 2)
+        q = self.query(query).permute(1, 0, 2)
+
+        q = q.view(batch_size, -1, self.n_heads,
+                   self.head_dim).permute(0, 2, 1, 3)
+        k = k.view(batch_size, -1, self.n_heads,
+                   self.head_dim).permute(0, 2, 1, 3)
+        v = v.view(batch_size, -1, self.n_heads,
+                   self.head_dim).permute(0, 2, 1, 3)
+
+        attn_weights = torch.matmul(q, k.permute(0, 1, 3, 2))
+        attn_weights = torch.div(attn_weights, torch.sqrt(
+            torch.tensor([self.head_dim]).to(device)))
         attn_weights = torch.softmax(attn_weights, dim=-1)
-        context = self.relu(torch.matmul(attn_weights, v))
 
-        return attn_weights, context
+        context = torch.matmul(self.dropout(attn_weights), v)
+        context = context.permute(0, 2, 1, 3).contiguous(
+        ).view(-1, batch_size, self.hidden_size)
+
+        attn_weights = torch.sum(
+            attn_weights.squeeze(0), dim=0).unsqueeze(dim=0)
+
+        return attn_weights.unsqueeze(dim=0), context
 
 
 class AttnDecoderRNN(nn.Module):
@@ -264,7 +241,7 @@ class AttnDecoderRNN(nn.Module):
 
         self.emb = nn.Embedding(output_size, hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.LSTM = nn.LSTM(hidden_size, hidden_size)
+        self.GRU = nn.GRU(2 * hidden_size, hidden_size)
         self.out = nn.Linear(hidden_size, output_size)
         self.attn = Attention(hidden_size)
 
@@ -278,25 +255,21 @@ class AttnDecoderRNN(nn.Module):
         embedding = self.dropout(embedding)
         (hidden, cell) = hidden
 
-        if len(embedding.shape) == 2:
-            embedding = torch.unsqueeze(embedding, 0)
-
-        batch_size = encoder_outputs.shape[0]
         attn_weights, context = self.attn(hidden, encoder_outputs)
-        output, hidden = self.LSTM(embedding, (hidden, cell))
+        rnn_input = torch.cat([embedding, context], 2)
+        output, hidden = self.GRU(rnn_input, hidden)
         output = self.out(output)
-        log_softmax = torch.log(torch.softmax(output, dim=-1))
-        return log_softmax, hidden, attn_weights
+        log_softmax = F.log_softmax(output, dim=-1)
+
+        return log_softmax, (hidden, cell), attn_weights
 
     def get_initial_hidden_state(self, batch_size):
         return torch.zeros(1, batch_size, self.hidden_size, device=device)
 
+
 ######################################################################
 
-
 def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, batch_size, max_length=MAX_LENGTH):
-    is_translating = False
-
     encoder_hidden = encoder.get_initial_hidden_state(batch_size)
     encoder_hidden = (encoder_hidden, encoder_hidden)
 
@@ -306,7 +279,6 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, b
     optimizer.zero_grad()
 
     loss = 0
-
     encoder_output, encoder_hidden = encoder(input_tensor, encoder_hidden)
     decoder_hidden = encoder_hidden
 
@@ -329,7 +301,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, b
 
 ######################################################################
 
-def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_LENGTH):
+def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_LENGTH, beam_width=5):
     """
     runs translation, returns the output and attention
     """
@@ -357,22 +329,64 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
 
         decoder_input = torch.tensor([[SOS_index]], device=device)
         decoder_hidden = encoder_hidden
-
-        decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
+        decoded_words = []
 
+        finished = []
+        hypothesis = namedtuple(
+            "hypothesis", "hidden, input, attention, prev, logprob, word")
+        init_hyp = hypothesis(
+            decoder_hidden, decoder_input, None, None, 0, None)
+        stacks = [[] for i in range(max_length + 1)]
+        stacks[0].append((0, init_hyp))
         for di in range(max_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
-            decoder_attentions[di] = decoder_attention.data
-            topv, topi = decoder_output.data.topk(1)
-            if topi.item() == EOS_index:
-                decoded_words.append(EOS_token)
-                break
-            else:
-                decoded_words.append(tgt_vocab.index2word[topi.item()])
-            decoder_input = topi.squeeze(dim=0).detach()
+            for h in sorted(stacks[di], key=lambda x: -x[0])[:beam_width]:
+                _, h = h
+                decoder_output, decoder_hidden, decoder_attention = decoder(
+                    h.input, h.hidden, encoder_outputs)
+                log_prob, ind = decoder_output.data.topk(beam_width)
+                ind = ind.squeeze()
+                log_prob = log_prob.squeeze()
+                for i in range(beam_width):
+                    if ind[i].item != SOS_index:
+                        word = None
+                        if ind[i].item() == EOS_index:
+                            word = EOS_token
+                        else:
+                            word = tgt_vocab.index2word[ind[i].item()]
+                        new_hyp = hypothesis(decoder_hidden,
+                                             ind[i].unsqueeze(
+                                                 0).unsqueeze(0).detach(),
+                                             decoder_attention, h, h.logprob + torch.sum(log_prob[i]).item(), word)
+                        stacks[di +
+                               1].append((get_score(new_hyp.logprob, di), new_hyp))
+
+        winner = max(stacks[15], key=lambda x: -x[0])
+        attention = []
+        node = winner[1]
+
+        while node:
+            decoded_words.append(node.word)
+            attention.append(node.attention)
+            node = node.prev
+
+        decoded_words = decoded_words[::-1][1:]
+        attention = attention[::-1][1:]
+
+        try:
+            index = decoded_words.index("<EOS>")
+            decoded_words = decoded_words[:index+1]
+        except ValueError:
+            pass
+
+        for i in range(len(attention)):
+            decoder_attentions[i] = attention[i]
+
         return decoded_words, decoder_attentions[:di + 1]
+
+
+def get_score(logprob, length):
+    return logprob / float(length + 1e-6) + 1
 
 
 ######################################################################
@@ -391,7 +405,6 @@ def translate_sentences(encoder, decoder, pairs, src_vocab, tgt_vocab, max_num_s
 ######################################################################
 # We can translate random sentences  and print out the
 # input, target, and output to make some subjective quality judgements:
-#
 
 def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1):
     for i in range(n):
@@ -457,7 +470,7 @@ def create_mini_batches(train_pairs, batch_size, src_vocab, tgt_vocab):
         target_tensors.append(target_tensor)
     input_tensors = nn.utils.rnn.pad_sequence(input_tensors)
     target_tensors = nn.utils.rnn.pad_sequence(target_tensors)
-    return input_tensors, target_tensors
+    return input_tensors.to(device), target_tensors.to(device)
 
 ######################################################################
 
@@ -492,7 +505,7 @@ def main():
                     help='output file for test translations')
     ap.add_argument('--load_checkpoint', nargs=1,
                     help='checkpoint file to start from')
-    ap.add_argument('--batch_size', default=6, type=int,
+    ap.add_argument('--batch_size', default=4, type=int,
                     help='training batch size')
 
     args = ap.parse_args()
@@ -575,7 +588,6 @@ def main():
                 encoder, decoder, dev_pairs, src_vocab, tgt_vocab, n=2)
             translated_sentences = translate_sentences(
                 encoder, decoder, dev_pairs, src_vocab, tgt_vocab)
-
             references = [[clean(pair[1]).split(), ]
                           for pair in dev_pairs[:len(translated_sentences)]]
             candidates = [clean(sent).split() for sent in translated_sentences]

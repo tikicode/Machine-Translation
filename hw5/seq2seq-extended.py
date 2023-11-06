@@ -301,7 +301,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, b
 
 ######################################################################
 
-def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_LENGTH, beam_width=5):
+def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, beam_search, max_length=MAX_LENGTH, beam_width=5):
     """
     runs translation, returns the output and attention
     """
@@ -331,8 +331,21 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         decoder_hidden = encoder_hidden
         decoder_attentions = torch.zeros(max_length, max_length)
         decoded_words = []
+        
+        if not beam_search:
+            for di in range(max_length):
+                decoder_output, decoder_hidden, decoder_attention = decoder(
+                    decoder_input, decoder_hidden, encoder_outputs)
+                decoder_attentions[di] = decoder_attention.data
+                topv, topi = decoder_output.data.topk(1)
+                if topi.item() == EOS_index:
+                    decoded_words.append(EOS_token)
+                    break
+                else:
+                    decoded_words.append(tgt_vocab.index2word[topi.item()])
+                decoder_input = topi.squeeze(dim=0).detach()
+            return decoded_words, decoder_attentions[:di + 1]
 
-        finished = []
         hypothesis = namedtuple(
             "hypothesis", "hidden, input, attention, prev, logprob, word")
         init_hyp = hypothesis(
@@ -392,11 +405,11 @@ def get_score(logprob, length):
 ######################################################################
 
 # Translate (dev/test)set takes in a list of sentences and writes out their transaltes
-def translate_sentences(encoder, decoder, pairs, src_vocab, tgt_vocab, max_num_sentences=None, max_length=MAX_LENGTH):
+def translate_sentences(encoder, decoder, pairs, src_vocab, tgt_vocab, beam_search, max_num_sentences=None, max_length=MAX_LENGTH):
     output_sentences = []
     for pair in pairs[:max_num_sentences]:
         output_words, attentions = translate(
-            encoder, decoder, pair[0], src_vocab, tgt_vocab)
+            encoder, decoder, pair[0], src_vocab, tgt_vocab, beam_search)
         output_sentence = ' '.join(output_words)
         output_sentences.append(output_sentence)
     return output_sentences
@@ -406,13 +419,13 @@ def translate_sentences(encoder, decoder, pairs, src_vocab, tgt_vocab, max_num_s
 # We can translate random sentences  and print out the
 # input, target, and output to make some subjective quality judgements:
 
-def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1):
+def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, beam_search, n=1):
     for i in range(n):
         pair = random.choice(pairs)
         print('>', pair[0])
         print('=', pair[1])
         output_words, attentions = translate(
-            encoder, decoder, pair[0], src_vocab, tgt_vocab)
+            encoder, decoder, pair[0], src_vocab, tgt_vocab, beam_search)
         output_sentence = ' '.join(output_words)
         print('<', output_sentence)
         print('')
@@ -445,9 +458,9 @@ def show_attention(input_sentence, output_words, attentions):
     plt.savefig('plots/'+input_sentence+'.png')
 
 
-def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab):
+def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab, beam_search):
     output_words, attentions = translate(
-        encoder1, decoder1, input_sentence, src_vocab, tgt_vocab)
+        encoder1, decoder1, input_sentence, src_vocab, tgt_vocab, beam_search)
     print('input =', input_sentence)
     print('output =', ' '.join(output_words))
     show_attention(input_sentence, output_words, attentions)
@@ -507,6 +520,9 @@ def main():
                     help='checkpoint file to start from')
     ap.add_argument('--batch_size', default=4, type=int,
                     help='training batch size')
+    ap.add_argument('--beam_search', dest='beam_search', action='store_true', help='use beam search')
+    ap.add_argument('--no-beam_search', dest='beam_search', action='store_false', help='no beam search')
+    ap.set_defaults(beam_search=False)
 
     args = ap.parse_args()
 
@@ -585,9 +601,9 @@ def main():
                          print_loss_avg)
             # translate from the dev set
             translate_random_sentence(
-                encoder, decoder, dev_pairs, src_vocab, tgt_vocab, n=2)
+                encoder, decoder, dev_pairs, src_vocab, tgt_vocab, args.beam_search, n=2)
             translated_sentences = translate_sentences(
-                encoder, decoder, dev_pairs, src_vocab, tgt_vocab)
+                encoder, decoder, dev_pairs, src_vocab, tgt_vocab, args.beam_search)
             references = [[clean(pair[1]).split(), ]
                           for pair in dev_pairs[:len(translated_sentences)]]
             candidates = [clean(sent).split() for sent in translated_sentences]
@@ -596,20 +612,20 @@ def main():
 
     # translate test set and write to file
     translated_sentences = translate_sentences(
-        encoder, decoder, test_pairs, src_vocab, tgt_vocab)
+        encoder, decoder, test_pairs, src_vocab, tgt_vocab, args.beam_search)
     with open(args.out_file, 'wt', encoding='utf-8') as outf:
         for sent in translated_sentences:
             outf.write(clean(sent) + '\n')
 
     # Visualizing Attention
     translate_and_show_attention(
-        "on p@@ eu@@ t me faire confiance .", encoder, decoder, src_vocab, tgt_vocab)
+        "on p@@ eu@@ t me faire confiance .", encoder, decoder, src_vocab, tgt_vocab, args.beam_search)
     translate_and_show_attention(
-        "j en suis contente .", encoder, decoder, src_vocab, tgt_vocab)
+        "j en suis contente .", encoder, decoder, src_vocab, tgt_vocab, args.beam_search)
     translate_and_show_attention(
-        "vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab)
+        "vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab, args.beam_search)
     translate_and_show_attention(
-        "c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab)
+        "c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab, args.beam_search)
 
 
 if __name__ == '__main__':

@@ -463,13 +463,13 @@ def main():
                     help='Source (input) language code, e.g. "fr"')
     ap.add_argument('--tgt_lang', default='en',
                     help='Source (input) language code, e.g. "en"')
-    ap.add_argument('--train_file', default='../data/fren.train.bpe',
+    ap.add_argument('--train_file', default='data/fren.train.bpe',
                     help='training file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence')
-    ap.add_argument('--dev_file', default='../data/fren.dev.bpe',
+    ap.add_argument('--dev_file', default='data/fren.dev.bpe',
                     help='dev file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence')
-    ap.add_argument('--test_file', default='../data/fren.test.bpe',
+    ap.add_argument('--test_file', default='data/fren.test.bpe',
                     help='test file. each line should have a source sentence,' +
                          'followed by "|||", followed by a target sentence' +
                          ' (for test, target is ignored)')
